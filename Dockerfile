@@ -18,13 +18,12 @@ WORKDIR /app
 
 # Backend source (including artisan) then install deps
 COPY backend ./
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
+RUN mkdir -p bootstrap/cache storage/framework/{cache,sessions,views} storage/logs \
+ && chmod -R 775 bootstrap/cache storage \
+ && composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
 
 # Frontend dist -> public
 COPY --from=frontend /app/frontend/dist/ ./public/
-
-# Ensure required dirs exist
-RUN mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
 
 ENV APP_ENV=production
 ENV APP_DEBUG=false
