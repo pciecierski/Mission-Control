@@ -1,0 +1,27 @@
+/.DS_Store
+/Thumbs.db
+
+# Node / frontend
+/frontend/node_modules
+/frontend/dist
+/frontend/.vite
+
+# Laravel / backend
+/backend/vendor
+/backend/storage
+/backend/.env
+/backend/.env.*
+/backend/bootstrap/cache/*.php
+/backend/storage/*.key
+
+# Logs
+/backend/storage/logs
+/backend/storage/framework/cache
+/backend/storage/framework/sessions
+/backend/storage/framework/views
+
+# IDE/editor
+.idea
+.vscode
+*.iml
+
