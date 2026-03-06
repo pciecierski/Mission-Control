@@ -16,12 +16,9 @@ COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-# Backend deps
-COPY backend/composer*.json ./
-RUN composer install --no-dev --optimize-autoloader
-
-# Backend source
+# Backend source (including artisan) then install deps
 COPY backend ./
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
 
 # Frontend dist -> public
 COPY --from=frontend /app/frontend/dist/ ./public/
