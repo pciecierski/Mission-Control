@@ -16,6 +16,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  GlobalStyles,
 } from '@mui/material'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -127,14 +128,24 @@ function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQ
   )
 }
 
-function Column({ title, droppableId, items, expandedId, onToggle, onDelete, onPrint }) {
+function Column({
+  title,
+  droppableId,
+  items,
+  expandedId,
+  onToggle,
+  onDelete,
+  onPrint,
+  isDropDisabled = false,
+}) {
+  const isQueue = droppableId === 'queue'
   return (
     <Stack spacing={2} sx={{ height: '100%' }}>
       <Typography variant="h6" fontWeight={800}>
         {title} <Chip label={items.length} size="small" sx={{ ml: 1 }} />
       </Typography>
       <Divider />
-      <Droppable droppableId={droppableId}>
+      <Droppable droppableId={droppableId} isDropDisabled={isDropDisabled}>
         {(provided, snapshot) => (
           <Stack
             ref={provided.innerRef}
@@ -156,7 +167,12 @@ function Column({ title, droppableId, items, expandedId, onToggle, onDelete, onP
               </Typography>
             ) : (
               items.map((item, index) => (
-                <Draggable key={item.id} draggableId={String(item.id)} index={index}>
+                <Draggable
+                  key={item.id}
+                  draggableId={String(item.id)}
+                  index={index}
+                  isDragDisabled={item.isDragDisabled}
+                >
                   {(dragProvided, dragSnapshot) => (
                     <Box
                       ref={dragProvided.innerRef}
@@ -167,10 +183,10 @@ function Column({ title, droppableId, items, expandedId, onToggle, onDelete, onP
                         awizacja={item}
                         isDragging={dragSnapshot.isDragging}
                         expanded={expandedId === item.id}
-                        onToggle={() => onToggle(item.id)}
+                        onToggle={() => onToggle?.(item.id)}
                         onDelete={() => onDelete?.(item.id)}
                         onPrint={() => onPrint?.(item)}
-                        isQueue={droppableId === 'queue'}
+                        isQueue={isQueue}
                       />
                     </Box>
                   )}
@@ -192,9 +208,23 @@ function App() {
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [dialogItem, setDialogItem] = useState(null)
+  const [isWorkerMode, setIsWorkerMode] = useState(false)
+  const [confirmModeOpen, setConfirmModeOpen] = useState(false)
 
-  const patchStatus = async (id, status) => {
-    const res = await fetch(`http://127.0.0.1:8000/api/queue/${id}`, {
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+
+const reorderQueueOnServer = async (orderedIds) => {
+    const res = await fetch(`${API_BASE}/api/queue/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: orderedIds.map((id) => Number(id)) }),
+    })
+    if (!res.ok) throw new Error(`Reorder failed (${res.status})`)
+    return res.json()
+  }
+
+const patchStatus = async (id, status) => {
+    const res = await fetch(`${API_BASE}/api/queue/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
@@ -207,7 +237,7 @@ function App() {
     try {
       setLoading(true)
       setError('')
-      const res = await fetch('http://127.0.0.1:8000/api/queue')
+      const res = await fetch(`${API_BASE}/api/queue`)
       if (!res.ok) throw new Error(`Błąd API: ${res.status}`)
       const data = await res.json()
       const normalized = (data || []).map(mapFromApi)
@@ -227,15 +257,32 @@ function App() {
   }, [fetchData])
 
   const handleDragEnd = async (result) => {
+    if (isWorkerMode) return
     const { source, destination } = result
     if (!destination) return
-    // nie pozwalamy na zmianę kolejności w ramach tej samej listy
-    if (source.droppableId === destination.droppableId) {
-      return
-    }
 
     const prevPool = pool
     const prevQueue = queue
+
+    // Reorder within queue
+    if (
+      source.droppableId === 'queue' &&
+      destination.droppableId === 'queue' &&
+      source.index !== destination.index
+    ) {
+      const reordered = Array.from(queue)
+      const [moved] = reordered.splice(source.index, 1)
+      reordered.splice(destination.index, 0, moved)
+      setQueue(reordered)
+      try {
+        await reorderQueueOnServer(reordered.map((i) => i.id))
+        await fetchData()
+      } catch (err) {
+        setError(err.message || 'Nie udało się zmienić kolejności')
+        setQueue(prevQueue)
+      }
+      return
+    }
 
     if (source.droppableId === 'pool' && destination.droppableId === 'queue') {
       const sourceItems = Array.from(pool)
@@ -275,8 +322,9 @@ function App() {
   }
 
   const handleDelete = async (id) => {
+    if (isWorkerMode) return
     try {
-      await fetch(`http://127.0.0.1:8000/api/queue/${id}`, { method: 'DELETE' })
+      await fetch(`${API_BASE}/api/queue/${id}`, { method: 'DELETE' })
       setPool((prev) => prev.filter((i) => i.id !== id))
       setQueue((prev) => prev.filter((i) => i.id !== id))
       if (expandedId === id) setExpandedId(null)
@@ -285,14 +333,62 @@ function App() {
     }
   }
 
+  const toggleMode = () => {
+    if (isWorkerMode) {
+      setConfirmModeOpen(true)
+      return
+    }
+    setIsWorkerMode(true)
+    setExpandedId(null)
+  }
+
+  const confirmLeaderMode = () => {
+    setIsWorkerMode(false)
+    setConfirmModeOpen(false)
+    setExpandedId(null)
+  }
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <GlobalStyles
+        styles={{
+          '@media print': {
+            'body *': {
+              visibility: 'hidden',
+            },
+            '.print-content, .print-content *': {
+              visibility: 'visible',
+            },
+            '.MuiDialog-root, .MuiDialog-container, .MuiDialog-paper': {
+              position: 'static',
+              inset: '0 !important',
+              transform: 'none !important',
+              boxShadow: 'none',
+              margin: 0,
+            },
+            '.print-content': {
+              padding: '0 16px 16px',
+            },
+            '.no-print': {
+              display: 'none !important',
+            },
+          },
+        }}
+      />
       <AppBar position="static" color="primary" elevation={0}>
         <Toolbar>
           <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
             Kolejka (drag & drop)
           </Typography>
-          <Chip label="Tryb demo" color="info" size="small" />
+          <Chip
+            label={isWorkerMode ? 'Tryb: Pracownik' : 'Tryb: Lider'}
+            color={isWorkerMode ? 'warning' : 'info'}
+            size="small"
+            sx={{ mr: 2 }}
+          />
+          <Button variant="outlined" color="inherit" onClick={toggleMode}>
+            Zmiana trybu
+          </Button>
         </Toolbar>
       </AppBar>
 
@@ -313,20 +409,32 @@ function App() {
               <Column
                 title="Dostępne obiekty"
                 droppableId="pool"
-                items={pool}
+                items={pool.map((item) => ({
+                  ...item,
+                  isDragDisabled: isWorkerMode,
+                }))}
                 expandedId={expandedId}
-                onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
+                onToggle={
+                  isWorkerMode
+                    ? undefined
+                    : (id) => setExpandedId((prev) => (prev === id ? null : id))
+                }
                 onDelete={handleDelete}
+                isDropDisabled={isWorkerMode}
               />
             </Grid>
             <Grid item xs={12} md={6}>
               <Column
                 title="Kolejka"
                 droppableId="queue"
-                items={queue}
+                items={queue.map((item) => ({
+                  ...item,
+                  isDragDisabled: isWorkerMode,
+                }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
                 onPrint={(item) => setDialogItem(item)}
+                isDropDisabled={isWorkerMode}
               />
             </Grid>
           </Grid>
@@ -334,60 +442,82 @@ function App() {
       </Container>
 
       <Dialog open={Boolean(dialogItem)} onClose={() => setDialogItem(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Szczegóły obiektu</DialogTitle>
+        <Box className="print-content">
+          <DialogTitle>Szczegóły obiektu</DialogTitle>
+          <DialogContent dividers>
+            {dialogItem && (
+              <Stack spacing={1}>
+                <Typography>
+                  <strong>Numer awizacji:</strong> {dialogItem.numerAwizacji}
+                </Typography>
+                <Typography>
+                  <strong>Rodzaj:</strong> {dialogItem.rodzaj}
+                </Typography>
+                <Typography>
+                  <strong>Magazyn:</strong> {dialogItem.magazyn}
+                </Typography>
+                <Typography>
+                  <strong>Kierowca:</strong> {dialogItem.kierowca}
+                </Typography>
+                <Typography>
+                  <strong>Numer pojazdu:</strong> {dialogItem.numerPojazdu}
+                </Typography>
+                <Typography>
+                  <strong>Planowana data:</strong> {dialogItem.planowanaData}
+                </Typography>
+                <Typography>
+                  <strong>Planowana godzina:</strong> {dialogItem.planowanaGodzina}
+                </Typography>
+                <Typography>
+                  <strong>Godzina rozpoczęcia:</strong> {dialogItem.godzinaRozpoczecia}
+                </Typography>
+                <Typography>
+                  <strong>Ilość zamówień:</strong> {dialogItem.iloscZamowien}
+                </Typography>
+                <Typography>
+                  <strong>Status:</strong> {dialogItem.status}
+                </Typography>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Zamówienia
+                </Typography>
+                {(dialogItem.orders ?? []).length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    Brak zamówień.
+                  </Typography>
+                )}
+                {(dialogItem.orders ?? []).map((o, idx) => (
+                  <Typography key={idx} variant="body2" color="text.secondary">
+                    • Strefa: {o.strefa}, Grupa: {o.grupa_towarowa}, Dostawca: {o.dostawca}, Nośniki:{' '}
+                    {o.ilosc_nosnikow}, Ref.: {o.ilosc_referencji}
+                  </Typography>
+                ))}
+              </Stack>
+            )}
+          </DialogContent>
+        </Box>
+        <DialogActions className="no-print">
+          <Button
+            startIcon={<PrintIcon />}
+            variant="contained"
+            onClick={() => window.print()}
+          >
+            Drukuj
+          </Button>
+          <Button onClick={() => setDialogItem(null)}>Zamknij</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={confirmModeOpen} onClose={() => setConfirmModeOpen(false)}>
+        <DialogTitle>Zmiana trybu</DialogTitle>
         <DialogContent dividers>
-          {dialogItem && (
-            <Stack spacing={1}>
-              <Typography>
-                <strong>Numer awizacji:</strong> {dialogItem.numerAwizacji}
-              </Typography>
-              <Typography>
-                <strong>Rodzaj:</strong> {dialogItem.rodzaj}
-              </Typography>
-              <Typography>
-                <strong>Magazyn:</strong> {dialogItem.magazyn}
-              </Typography>
-              <Typography>
-                <strong>Kierowca:</strong> {dialogItem.kierowca}
-              </Typography>
-              <Typography>
-                <strong>Numer pojazdu:</strong> {dialogItem.numerPojazdu}
-              </Typography>
-              <Typography>
-                <strong>Planowana data:</strong> {dialogItem.planowanaData}
-              </Typography>
-              <Typography>
-                <strong>Planowana godzina:</strong> {dialogItem.planowanaGodzina}
-              </Typography>
-              <Typography>
-                <strong>Godzina rozpoczęcia:</strong> {dialogItem.godzinaRozpoczecia}
-              </Typography>
-              <Typography>
-                <strong>Ilość zamówień:</strong> {dialogItem.iloscZamowien}
-              </Typography>
-              <Typography>
-                <strong>Status:</strong> {dialogItem.status}
-              </Typography>
-              <Divider sx={{ my: 1 }} />
-              <Typography variant="subtitle1" fontWeight={700}>
-                Zamówienia
-              </Typography>
-              {(dialogItem.orders ?? []).length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  Brak zamówień.
-                </Typography>
-              )}
-              {(dialogItem.orders ?? []).map((o, idx) => (
-                <Typography key={idx} variant="body2" color="text.secondary">
-                  • Strefa: {o.strefa}, Grupa: {o.grupa_towarowa}, Dostawca: {o.dostawca}, Nośniki:{' '}
-                  {o.ilosc_nosnikow}, Ref.: {o.ilosc_referencji}
-                </Typography>
-              ))}
-            </Stack>
-          )}
+          <Typography>Dokonaj autoryzajci i potwierdź zmianę trybu</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogItem(null)}>Zamknij</Button>
+          <Button onClick={() => setConfirmModeOpen(false)}>Anuluj</Button>
+          <Button variant="contained" onClick={confirmLeaderMode}>
+            Potwierdzam
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

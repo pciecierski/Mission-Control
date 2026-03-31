@@ -25,11 +25,19 @@ RUN mkdir -p bootstrap/cache storage/framework/{cache,sessions,views} storage/lo
 # Frontend dist -> public
 COPY --from=frontend /app/frontend/dist/ ./public/
 
+# Ensure runtime cache/logs dirs exist with correct perms
+RUN mkdir -p bootstrap/cache \
+    storage/framework/cache \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+ && chmod -R 775 bootstrap/cache storage
+
 ENV APP_ENV=production
 ENV APP_DEBUG=false
 ENV PORT=8080
 
 EXPOSE 8080
 
-# Serve Laravel with built-in server
-CMD ["sh", "-c", "php -S 0.0.0.0:${PORT} -t public public/index.php"]
+# Ensure cache/logs dirs exist at runtime, then serve with router (static-first)
+CMD ["sh", "-c", "mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs && chmod -R 775 bootstrap/cache storage && php -S 0.0.0.0:${PORT:-8080} -t public server.php"]
