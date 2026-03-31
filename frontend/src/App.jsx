@@ -211,8 +211,10 @@ function App() {
   const [isWorkerMode, setIsWorkerMode] = useState(false)
   const [confirmModeOpen, setConfirmModeOpen] = useState(false)
   const [creatingLink, setCreatingLink] = useState(false)
+  const [qrCodeUrl, setQrCodeUrl] = useState('')
+  const [linksCache, setLinksCache] = useState({})
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+  const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const reorderQueueOnServer = async (orderedIds) => {
     const res = await fetch(`${API_BASE}/api/queue/reorder`, {
@@ -349,18 +351,36 @@ const patchStatus = async (id, status) => {
     setExpandedId(null)
   }
 
+  useEffect(() => {
+    if (!dialogItem?.numerAwizacji) {
+      setQrCodeUrl('')
+      return
+    }
+    const cached = linksCache[dialogItem.numerAwizacji]
+    setQrCodeUrl(cached || '')
+  }, [dialogItem, linksCache])
+
   const handleCreateLink = async () => {
     if (!dialogItem?.numerAwizacji) return
+    if (linksCache[dialogItem.numerAwizacji]) {
+      window.alert('Link już utworzony dla tego obiektu.')
+      return
+    }
     try {
       setCreatingLink(true)
       setError('')
-      const res = await fetch('https://qrupload.dclabs.pl/api/links', {
+      const res = await fetch(`${API_BASE}/api/links/proxy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceDocumentNumber: dialogItem.numerAwizacji }),
       })
       if (!res.ok) throw new Error(`Błąd tworzenia linku (${res.status})`)
-      await res.json().catch(() => null)
+      const payload = await res.json().catch(() => null)
+      const url = payload?.qrCodeUrl
+      if (url) {
+        setQrCodeUrl(url)
+        setLinksCache((prev) => ({ ...prev, [dialogItem.numerAwizacji]: url }))
+      }
       window.alert('Link utworzony.')
     } catch (err) {
       setError(err.message || 'Nie udało się utworzyć linku')
@@ -513,6 +533,20 @@ const patchStatus = async (id, status) => {
                     {o.ilosc_nosnikow}, Ref.: {o.ilosc_referencji}
                   </Typography>
                 ))}
+                {qrCodeUrl && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      QR Code
+                    </Typography>
+                    <Box
+                      component="img"
+                      src={qrCodeUrl}
+                      alt="QR Code"
+                      sx={{ maxWidth: 280, maxHeight: 280, border: '1px solid', borderColor: 'divider' }}
+                    />
+                  </>
+                )}
               </Stack>
             )}
           </DialogContent>
@@ -521,7 +555,7 @@ const patchStatus = async (id, status) => {
           <Button
             variant="outlined"
             onClick={handleCreateLink}
-            disabled={creatingLink || !dialogItem?.numerAwizacji}
+            disabled={creatingLink || !dialogItem?.numerAwizacji || Boolean(qrCodeUrl)}
           >
             {creatingLink ? 'Tworzenie...' : 'Utwórz URL'}
           </Button>

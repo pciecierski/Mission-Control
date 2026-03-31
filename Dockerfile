@@ -33,7 +33,7 @@ EXPOSE 8080
 
 # Runtime entrypoint to ensure cache/logs exist and start PHP server
 COPY backend/start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 # Force entrypoint so Railway/Nixpacks cannot override command with literal ${PORT}
 ENTRYPOINT ["sh", "/app/start.sh"]
