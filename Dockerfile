@@ -40,4 +40,5 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Ensure cache/logs dirs exist at runtime, then serve with router (static-first)
-CMD ["sh", "-c", "mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs && chmod -R 775 bootstrap/cache storage && php -S 0.0.0.0:${PORT:-8080} -t public server.php"]
+# BusyBox sh expands ${PORT:-8080}; store in variable to avoid literal ${PORT} issues on hosts
+CMD ["sh", "-c", "mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs && chmod -R 775 bootstrap/cache storage && PORT_VALUE=${PORT:-8080} && php -S 0.0.0.0:${PORT_VALUE} -t public server.php"]
