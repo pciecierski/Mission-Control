@@ -210,6 +210,7 @@ function App() {
   const [dialogItem, setDialogItem] = useState(null)
   const [isWorkerMode, setIsWorkerMode] = useState(false)
   const [confirmModeOpen, setConfirmModeOpen] = useState(false)
+  const [creatingLink, setCreatingLink] = useState(false)
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -346,6 +347,26 @@ const patchStatus = async (id, status) => {
     setIsWorkerMode(false)
     setConfirmModeOpen(false)
     setExpandedId(null)
+  }
+
+  const handleCreateLink = async () => {
+    if (!dialogItem?.numerAwizacji) return
+    try {
+      setCreatingLink(true)
+      setError('')
+      const res = await fetch('https://qrupload.dclabs.pl/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceDocumentNumber: dialogItem.numerAwizacji }),
+      })
+      if (!res.ok) throw new Error(`Błąd tworzenia linku (${res.status})`)
+      await res.json().catch(() => null)
+      window.alert('Link utworzony.')
+    } catch (err) {
+      setError(err.message || 'Nie udało się utworzyć linku')
+    } finally {
+      setCreatingLink(false)
+    }
   }
 
   return (
@@ -497,6 +518,13 @@ const patchStatus = async (id, status) => {
           </DialogContent>
         </Box>
         <DialogActions className="no-print">
+          <Button
+            variant="outlined"
+            onClick={handleCreateLink}
+            disabled={creatingLink || !dialogItem?.numerAwizacji}
+          >
+            {creatingLink ? 'Tworzenie...' : 'Utwórz URL'}
+          </Button>
           <Button
             startIcon={<PrintIcon />}
             variant="contained"
