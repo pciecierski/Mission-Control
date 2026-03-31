@@ -1,4 +1,5 @@
 #!/bin/sh
+# Runtime starter for php -S
 set -e
 
 # Resolve PORT with default
