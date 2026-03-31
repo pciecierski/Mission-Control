@@ -25,20 +25,12 @@ RUN mkdir -p bootstrap/cache storage/framework/{cache,sessions,views} storage/lo
 # Frontend dist -> public
 COPY --from=frontend /app/frontend/dist/ ./public/
 
-# Ensure runtime cache/logs dirs exist with correct perms
-RUN mkdir -p bootstrap/cache \
-    storage/framework/cache \
-    storage/framework/sessions \
-    storage/framework/views \
-    storage/logs \
- && chmod -R 775 bootstrap/cache storage
-
 ENV APP_ENV=production
 ENV APP_DEBUG=false
 ENV PORT=8080
 
 EXPOSE 8080
 
-# Ensure cache/logs dirs exist at runtime, then serve with router (static-first)
-# BusyBox sh expands ${PORT:-8080}; store in variable to avoid literal ${PORT} issues on hosts
-CMD ["sh", "-c", "mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs && chmod -R 775 bootstrap/cache storage && PORT_VALUE=${PORT:-8080} && php -S 0.0.0.0:${PORT_VALUE} -t public server.php"]
+# Runtime entrypoint to ensure cache/logs exist and start PHP server
+COPY backend/start.sh /app/start.sh
+CMD ["sh", "/app/start.sh"]
