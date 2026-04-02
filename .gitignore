@@ -7,6 +7,10 @@
 /frontend/.vite
 
 # Laravel / backend
+# Vite build skopiowany do public (lokalnie / Dockerfile robi npm run build)
+/backend/public/assets/
+/backend/public/index.html
+/backend/public/vite.svg
 /backend/vendor
 /backend/storage
 /backend/.env

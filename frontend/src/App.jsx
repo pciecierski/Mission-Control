@@ -17,6 +17,7 @@ import {
   DialogActions,
   Button,
   GlobalStyles,
+  Link,
 } from '@mui/material'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -44,7 +45,7 @@ const mapFromApi = (item) => ({
   orders: item.orders ?? [],
 })
 
-function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQueue }) {
+function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQueue, docUrl }) {
   const canPrint = Boolean(onPrint)
   const bgColor =
     awizacja.status === 'Realizowane'
@@ -130,6 +131,20 @@ function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQ
                 Brak zamówień.
               </Typography>
             )}
+            {docUrl && (
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%', pt: 1 }}>
+                <Link
+                  href={docUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  variant="button"
+                  sx={{ fontWeight: 600 }}
+                >
+                  docurl
+                </Link>
+              </Box>
+            )}
           </Stack>
         )}
       </Stack>
@@ -196,6 +211,7 @@ function Column({
                         onDelete={() => onDelete?.(item.id)}
                         onPrint={() => onPrint?.(item)}
                         isQueue={isQueue}
+                        docUrl={item.docUrl}
                       />
                     </Box>
                   )}
@@ -224,6 +240,7 @@ function App() {
   const [creatingLink, setCreatingLink] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [linksCache, setLinksCache] = useState({})
+  const [docUrlByAwizacja, setDocUrlByAwizacja] = useState({})
 
   const API_BASE = import.meta.env.VITE_API_BASE ?? ''
   const statusByColumn = {
@@ -390,7 +407,7 @@ function App() {
 
   const handleCreateLink = async () => {
     if (!dialogItem?.numerAwizacji) return
-    if (linksCache[dialogItem.numerAwizacji]) {
+    if (linksCache[dialogItem.numerAwizacji] || docUrlByAwizacja[dialogItem.numerAwizacji]) {
       window.alert('Link już utworzony dla tego obiektu.')
       return
     }
@@ -404,10 +421,14 @@ function App() {
       })
       if (!res.ok) throw new Error(`Błąd tworzenia linku (${res.status})`)
       const payload = await res.json().catch(() => null)
-      const url = payload?.qrCodeUrl
-      if (url) {
-        setQrCodeUrl(url)
-        setLinksCache((prev) => ({ ...prev, [dialogItem.numerAwizacji]: url }))
+      const uploadUrl = payload?.uploadUrl
+      const qrUrl = payload?.qrCodeUrl
+      if (uploadUrl) {
+        setDocUrlByAwizacja((prev) => ({ ...prev, [dialogItem.numerAwizacji]: uploadUrl }))
+      }
+      if (qrUrl) {
+        setQrCodeUrl(qrUrl)
+        setLinksCache((prev) => ({ ...prev, [dialogItem.numerAwizacji]: qrUrl }))
       }
       window.alert('Link utworzony.')
     } catch (err) {
@@ -484,7 +505,7 @@ function App() {
       <AppBar position="static" color="primary" elevation={0}>
         <Toolbar>
           <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
-            Kolejka (drag & drop)
+            Zarządzanie misjami
           </Typography>
           <Chip
             label={isWorkerMode ? 'Tryb: Pracownik' : 'Tryb: Lider'}
@@ -513,11 +534,12 @@ function App() {
           <Grid container spacing={3}>
             <Grid item xs={12} md={4}>
               <Column
-                title="Dostępne obiekty"
+                title="Dostępne misje"
                 droppableId="pool"
                 items={pool.map((item) => ({
                   ...item,
                   isDragDisabled: isWorkerMode,
+                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={
@@ -531,11 +553,12 @@ function App() {
             </Grid>
             <Grid item xs={12} md={4}>
               <Column
-                title="Kolejka"
+                title="Oczekujące Misje"
                 droppableId="queue"
                 items={queue.map((item) => ({
                   ...item,
                   isDragDisabled: isWorkerMode,
+                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
@@ -550,6 +573,7 @@ function App() {
                 items={inProgress.map((item) => ({
                   ...item,
                   isDragDisabled: true,
+                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => {
@@ -568,6 +592,7 @@ function App() {
                 items={done.map((item) => ({
                   ...item,
                   isDragDisabled: true,
+                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
@@ -652,7 +677,12 @@ function App() {
           <Button
             variant="outlined"
             onClick={handleCreateLink}
-            disabled={creatingLink || !dialogItem?.numerAwizacji || Boolean(qrCodeUrl)}
+            disabled={
+              creatingLink ||
+              !dialogItem?.numerAwizacji ||
+              Boolean(qrCodeUrl) ||
+              Boolean(docUrlByAwizacja[dialogItem?.numerAwizacji])
+            }
           >
             {creatingLink ? 'Tworzenie...' : 'Utwórz URL'}
           </Button>
