@@ -59,6 +59,16 @@ class QueueItemController extends Controller
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 
+    // Debug helper: echo method and payload (do not leave long-term in prod)
+    public function debugMethod(Request $request)
+    {
+        return response()->json([
+            'method' => $request->method(),
+            'payload' => $request->all(),
+            'headers' => $request->headers->all(),
+        ]);
+    }
+
     public function close(Request $request)
     {
         $data = $request->validate([
