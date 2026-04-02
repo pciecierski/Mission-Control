@@ -9,6 +9,7 @@ Route::post('/queue', [QueueItemController::class, 'store']);
 Route::patch('/queue/{queueItem}', [QueueItemController::class, 'update']);
 Route::delete('/queue/{queueItem}', [QueueItemController::class, 'destroy']);
 Route::post('/queue/reorder', [QueueItemController::class, 'reorder']);
+Route::post('/closed', [QueueItemController::class, 'close']);
 
 // Proxy to external QR upload service to avoid CORS from frontend
 Route::post('/links/proxy', [QrLinkController::class, 'store']);

@@ -45,6 +45,15 @@ const mapFromApi = (item) => ({
 })
 
 function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQueue }) {
+  const canPrint = Boolean(onPrint)
+  const bgColor =
+    awizacja.status === 'Realizowane'
+      ? '#e6f4ea'
+      : awizacja.status === 'Zakończone'
+        ? '#f2f2f2'
+        : isDragging
+          ? 'action.hover'
+          : 'background.paper'
   return (
     <Paper
       elevation={isDragging ? 3 : 1}
@@ -52,7 +61,7 @@ function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQ
         p: 2,
         border: '1px solid',
         borderColor: isDragging ? 'primary.main' : 'divider',
-        backgroundColor: isDragging ? 'action.hover' : 'background.paper',
+        backgroundColor: bgColor,
         transition: 'border-color 120ms ease, box-shadow 120ms ease',
       }}
     >
@@ -80,7 +89,7 @@ function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQ
                   <DeleteOutlineIcon />
                 </IconButton>
               )}
-              {isQueue && (
+              {canPrint && (
                 <IconButton
                   color="primary"
                   size="small"
@@ -204,6 +213,8 @@ function Column({
 function App() {
   const [pool, setPool] = useState([])
   const [queue, setQueue] = useState([])
+  const [inProgress, setInProgress] = useState([])
+  const [done, setDone] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
@@ -215,39 +226,53 @@ function App() {
   const [linksCache, setLinksCache] = useState({})
 
   const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+  const statusByColumn = {
+    pool: 'Oczekujący',
+    queue: 'Zakolejkowany',
+    inProgress: 'Realizowane',
+    done: 'Zakończone',
+  }
 
-const reorderQueueOnServer = async (orderedIds) => {
+  const reorderQueueOnServer = async (orderedIds) => {
+    if (!orderedIds.length) return
     const res = await fetch(`${API_BASE}/api/queue/reorder`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ order: orderedIds.map((id) => Number(id)) }),
     })
     if (!res.ok) throw new Error(`Reorder failed (${res.status})`)
     return res.json()
   }
 
-const patchStatus = async (id, status) => {
+  const patchStatus = async (id, status) => {
     const res = await fetch(`${API_BASE}/api/queue/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ status }),
     })
     if (!res.ok) throw new Error(`PATCH status failed (${res.status})`)
-    return res.json()
+    return res.json().catch(() => ({}))
   }
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       setError('')
-      const res = await fetch(`${API_BASE}/api/queue`)
+      const res = await fetch(`${API_BASE}/api/queue`, { headers: { Accept: 'application/json' } })
       if (!res.ok) throw new Error(`Błąd API: ${res.status}`)
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
+      if (!data) throw new Error('Błąd parsowania odpowiedzi API')
       const normalized = (data || []).map(mapFromApi)
-      const poolItems = normalized.filter((i) => i.status !== 'Zakolejkowany')
+      const poolItems = normalized.filter(
+        (i) => !['Zakolejkowany', 'Realizowane', 'Zakończone'].includes(i.status)
+      )
       const queueItems = normalized.filter((i) => i.status === 'Zakolejkowany')
+      const inProgressItems = normalized.filter((i) => i.status === 'Realizowane')
+      const doneItems = normalized.filter((i) => i.status === 'Zakończone')
       setPool(sortByStart(poolItems))
       setQueue(queueItems)
+      setInProgress(sortByStart(inProgressItems))
+      setDone(sortByStart(doneItems))
     } catch (err) {
       setError(err.message || 'Błąd ładowania')
     } finally {
@@ -264,22 +289,22 @@ const patchStatus = async (id, status) => {
     const { source, destination } = result
     if (!destination) return
 
-    const prevPool = pool
-    const prevQueue = queue
+    // Drag & drop działa tylko między pool a queue
+    const allowed = new Set(['pool', 'queue'])
+    if (!allowed.has(source.droppableId) || !allowed.has(destination.droppableId)) return
+
+    const prevPool = [...pool]
+    const prevQueue = [...queue]
 
     // Reorder within queue
-    if (
-      source.droppableId === 'queue' &&
-      destination.droppableId === 'queue' &&
-      source.index !== destination.index
-    ) {
+    if (source.droppableId === 'queue' && destination.droppableId === 'queue') {
+      if (source.index === destination.index) return
       const reordered = Array.from(queue)
       const [moved] = reordered.splice(source.index, 1)
       reordered.splice(destination.index, 0, moved)
       setQueue(reordered)
       try {
         await reorderQueueOnServer(reordered.map((i) => i.id))
-        await fetchData()
       } catch (err) {
         setError(err.message || 'Nie udało się zmienić kolejności')
         setQueue(prevQueue)
@@ -287,24 +312,27 @@ const patchStatus = async (id, status) => {
       return
     }
 
+    // Move pool -> queue
     if (source.droppableId === 'pool' && destination.droppableId === 'queue') {
       const sourceItems = Array.from(pool)
       const [moved] = sourceItems.splice(source.index, 1)
+      const destItems = [...queue]
       moved.status = 'Zakolejkowany'
-      const destItems = [...queue, moved] // zawsze na koniec
+      destItems.splice(destination.index, 0, moved)
       setPool(sortByStart(sourceItems))
       setQueue(destItems)
       try {
         await patchStatus(moved.id, 'Zakolejkowany')
-        await fetchData()
+        await reorderQueueOnServer(destItems.map((i) => i.id))
       } catch (err) {
-        setError(err.message)
+        setError(err.message || 'Nie udało się zmienić statusu')
         setPool(prevPool)
         setQueue(prevQueue)
       }
       return
     }
 
+    // Move queue -> pool
     if (source.droppableId === 'queue' && destination.droppableId === 'pool') {
       const sourceItems = Array.from(queue)
       const [moved] = sourceItems.splice(source.index, 1)
@@ -314,9 +342,9 @@ const patchStatus = async (id, status) => {
       setPool(destItems)
       try {
         await patchStatus(moved.id, 'Oczekujący')
-        await fetchData()
+        await reorderQueueOnServer(sourceItems.map((i) => i.id))
       } catch (err) {
-        setError(err.message)
+        setError(err.message || 'Nie udało się zmienić statusu')
         setQueue(prevQueue)
         setPool(prevPool)
       }
@@ -371,7 +399,7 @@ const patchStatus = async (id, status) => {
       setError('')
       const res = await fetch(`${API_BASE}/api/links/proxy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ sourceDocumentNumber: dialogItem.numerAwizacji }),
       })
       if (!res.ok) throw new Error(`Błąd tworzenia linku (${res.status})`)
@@ -386,6 +414,43 @@ const patchStatus = async (id, status) => {
       setError(err.message || 'Nie udało się utworzyć linku')
     } finally {
       setCreatingLink(false)
+    }
+  }
+
+  const handleMarkInProgressAndPrint = async () => {
+    if (!dialogItem?.id) {
+      window.print()
+      return
+    }
+
+    // Jeśli już realizowane, tylko drukuj
+    if (dialogItem.status === 'Realizowane') {
+      window.print()
+      return
+    }
+
+    const prevQueue = [...queue]
+    const prevInProgress = [...inProgress]
+    const fromQueue = queue.find((i) => i.id === dialogItem.id)
+    if (!fromQueue) {
+      window.print()
+      return
+    }
+
+    const updatedQueue = queue.filter((i) => i.id !== dialogItem.id)
+    const updatedItem = { ...fromQueue, status: 'Realizowane' }
+    const updatedInProgress = sortByStart([...inProgress, updatedItem])
+
+    setQueue(updatedQueue)
+    setInProgress(updatedInProgress)
+
+    try {
+      await patchStatus(dialogItem.id, 'Realizowane')
+      window.print()
+    } catch (err) {
+      setError(err.message || 'Nie udało się zmienić statusu')
+      setQueue(prevQueue)
+      setInProgress(prevInProgress)
     }
   }
 
@@ -433,7 +498,7 @@ const patchStatus = async (id, status) => {
         </Toolbar>
       </AppBar>
 
-      <Container sx={{ py: 4 }}>
+      <Container sx={{ py: 4 }} maxWidth={false}>
         {error && (
           <Paper
             elevation={0}
@@ -446,7 +511,7 @@ const patchStatus = async (id, status) => {
         )}
         <DragDropContext onDragEnd={handleDragEnd}>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <Column
                 title="Dostępne obiekty"
                 droppableId="pool"
@@ -464,7 +529,7 @@ const patchStatus = async (id, status) => {
                 isDropDisabled={isWorkerMode}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <Column
                 title="Kolejka"
                 droppableId="queue"
@@ -476,6 +541,38 @@ const patchStatus = async (id, status) => {
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
                 onPrint={(item) => setDialogItem(item)}
                 isDropDisabled={isWorkerMode}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Column
+                title="Realizowane misje"
+                droppableId="inProgress"
+                items={inProgress.map((item) => ({
+                  ...item,
+                  isDragDisabled: true,
+                }))}
+                expandedId={expandedId}
+                onToggle={(id) => {
+                  const found = inProgress.find((x) => x.id === id)
+                  if (found) setDialogItem(found)
+                  setExpandedId((prev) => (prev === id ? null : id))
+                }}
+                onPrint={(item) => setDialogItem(item)}
+                isDropDisabled
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Column
+                title="Zakończone misje"
+                droppableId="done"
+                items={done.map((item) => ({
+                  ...item,
+                  isDragDisabled: true,
+                }))}
+                expandedId={expandedId}
+                onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
+                onDelete={handleDelete}
+                isDropDisabled
               />
             </Grid>
           </Grid>
@@ -559,11 +656,7 @@ const patchStatus = async (id, status) => {
           >
             {creatingLink ? 'Tworzenie...' : 'Utwórz URL'}
           </Button>
-          <Button
-            startIcon={<PrintIcon />}
-            variant="contained"
-            onClick={() => window.print()}
-          >
+          <Button startIcon={<PrintIcon />} variant="contained" onClick={handleMarkInProgressAndPrint}>
             Drukuj
           </Button>
           <Button onClick={() => setDialogItem(null)}>Zamknij</Button>

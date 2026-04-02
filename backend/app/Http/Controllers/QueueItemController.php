@@ -59,6 +59,25 @@ class QueueItemController extends Controller
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 
+    public function close(Request $request)
+    {
+        $data = $request->validate([
+            'sourceDocumentNumber' => ['required', 'string', 'max:255'],
+        ]);
+
+        $queueItem = QueueItem::with('orders')
+            ->where('numer_awizacji', $data['sourceDocumentNumber'])
+            ->first();
+
+        if (!$queueItem) {
+            return response()->json(['message' => 'Obiekt nie znaleziony'], Response::HTTP_NOT_FOUND);
+        }
+
+        $queueItem->update(['status' => 'Zakończone']);
+
+        return response()->json($queueItem->fresh('orders'));
+    }
+
     public function reorder(Request $request)
     {
         $validated = $request->validate([
@@ -86,7 +105,7 @@ class QueueItemController extends Controller
             'planowana_data' => [$partial ? 'sometimes' : 'required', 'date'],
             'planowana_godzina' => [$partial ? 'sometimes' : 'nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'godzina_rozpoczecia' => [$partial ? 'sometimes' : 'nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
-            'status' => [$partial ? 'sometimes' : 'nullable', 'in:Oczekujący,Zakolejkowany'],
+            'status' => [$partial ? 'sometimes' : 'nullable', 'in:Oczekujący,Zakolejkowany,Realizowane,Zakończone'],
         ];
 
         return $request->validate($rules);
