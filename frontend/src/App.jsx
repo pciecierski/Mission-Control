@@ -45,7 +45,18 @@ const mapFromApi = (item) => ({
   orders: item.orders ?? [],
 })
 
-function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQueue, docUrl }) {
+function Tile({
+  awizacja,
+  isDragging,
+  expanded,
+  onToggle,
+  onDelete,
+  onPrint,
+  isQueue,
+  docUrl,
+  deleteDisabled = false,
+  printDisabled = false,
+}) {
   const canPrint = Boolean(onPrint)
   const bgColor =
     awizacja.status === 'Realizowane'
@@ -82,6 +93,7 @@ function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQ
                 <IconButton
                   color="error"
                   size="small"
+                  disabled={deleteDisabled}
                   onClick={(e) => {
                     e.stopPropagation()
                     onDelete?.()
@@ -94,6 +106,7 @@ function Tile({ awizacja, isDragging, expanded, onToggle, onDelete, onPrint, isQ
                 <IconButton
                   color="primary"
                   size="small"
+                  disabled={printDisabled}
                   onClick={(e) => {
                     e.stopPropagation()
                     onPrint?.()
@@ -163,6 +176,8 @@ function Column({
   isDropDisabled = false,
 }) {
   const isQueue = droppableId === 'queue'
+  const canDeleteInColumn = droppableId === 'pool' || droppableId === 'done'
+  const isPrintDisabledInColumn = droppableId === 'pool'
   return (
     <Stack spacing={2} sx={{ height: '100%' }}>
       <Typography variant="h6" fontWeight={800}>
@@ -212,6 +227,8 @@ function Column({
                         onPrint={() => onPrint?.(item)}
                         isQueue={isQueue}
                         docUrl={item.docUrl}
+                        deleteDisabled={!canDeleteInColumn}
+                        printDisabled={isPrintDisabledInColumn}
                       />
                     </Box>
                   )}
@@ -241,6 +258,7 @@ function App() {
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [linksCache, setLinksCache] = useState({})
   const [docUrlByAwizacja, setDocUrlByAwizacja] = useState({})
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null)
 
   const API_BASE = import.meta.env.VITE_API_BASE ?? ''
   const statusByColumn = {
@@ -369,15 +387,31 @@ function App() {
     }
   }
 
-  const handleDelete = async (id) => {
+  const handleDeleteRequest = (id) => {
+    if (isWorkerMode) return
+    setDeleteConfirmId(id)
+  }
+
+  const handleDelete = async () => {
+    const id = deleteConfirmId
+    if (!id || isWorkerMode) return
     if (isWorkerMode) return
     try {
-      await fetch(`${API_BASE}/api/queue/${id}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/api/queue/${id}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) throw new Error(`Nie udało się usunąć misji (${res.status})`)
+
       setPool((prev) => prev.filter((i) => i.id !== id))
       setQueue((prev) => prev.filter((i) => i.id !== id))
+      setInProgress((prev) => prev.filter((i) => i.id !== id))
+      setDone((prev) => prev.filter((i) => i.id !== id))
       if (expandedId === id) setExpandedId(null)
+      if (dialogItem?.id === id) setDialogItem(null)
+      setDeleteConfirmId(null)
     } catch (err) {
-      console.error('Delete error', err)
+      setError(err.message || 'Nie udało się usunąć misji')
     }
   }
 
@@ -480,21 +514,52 @@ function App() {
       <GlobalStyles
         styles={{
           '@media print': {
-            'body *': {
-              visibility: 'hidden',
+            '@page': {
+              size: 'A4 portrait',
+              margin: '8mm',
             },
-            '.print-content, .print-content *': {
-              visibility: 'visible',
+            'html, body': {
+              width: '210mm',
+              height: '297mm',
+              margin: 0,
+              padding: 0,
+              overflow: 'hidden',
+            },
+            'body > *': {
+              display: 'none !important',
             },
             '.MuiDialog-root, .MuiDialog-container, .MuiDialog-paper': {
+              display: 'block !important',
               position: 'static',
               inset: '0 !important',
               transform: 'none !important',
               boxShadow: 'none',
               margin: 0,
+              background: '#fff !important',
+              backgroundImage: 'none !important',
+            },
+            '.MuiDialogTitle-root, .MuiDialogActions-root': {
+              display: 'none !important',
             },
             '.print-content': {
+              display: 'block',
               padding: '0 16px 16px',
+              maxHeight: 'calc(297mm - 16mm)',
+              overflow: 'hidden',
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+              background: '#fff !important',
+              backgroundImage: 'none !important',
+            },
+            '.MuiDialogContent-root': {
+              padding: '0 !important',
+              overflow: 'hidden !important',
+              background: '#fff !important',
+              backgroundImage: 'none !important',
+            },
+            '.print-content *': {
+              background: 'transparent !important',
+              backgroundImage: 'none !important',
             },
             '.no-print': {
               display: 'none !important',
@@ -547,7 +612,8 @@ function App() {
                     ? undefined
                     : (id) => setExpandedId((prev) => (prev === id ? null : id))
                 }
-                onDelete={handleDelete}
+                onDelete={handleDeleteRequest}
+                onPrint={() => {}}
                 isDropDisabled={isWorkerMode}
               />
             </Grid>
@@ -562,6 +628,7 @@ function App() {
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
+                onDelete={handleDeleteRequest}
                 onPrint={(item) => setDialogItem(item)}
                 isDropDisabled={isWorkerMode}
               />
@@ -577,10 +644,9 @@ function App() {
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => {
-                  const found = inProgress.find((x) => x.id === id)
-                  if (found) setDialogItem(found)
                   setExpandedId((prev) => (prev === id ? null : id))
                 }}
+                onDelete={handleDeleteRequest}
                 onPrint={(item) => setDialogItem(item)}
                 isDropDisabled
               />
@@ -596,7 +662,7 @@ function App() {
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
-                onDelete={handleDelete}
+                onDelete={handleDeleteRequest}
                 isDropDisabled
               />
             </Grid>
@@ -702,6 +768,21 @@ function App() {
           <Button onClick={() => setConfirmModeOpen(false)}>Anuluj</Button>
           <Button variant="contained" onClick={confirmLeaderMode}>
             Potwierdzam
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteConfirmId)} onClose={() => setDeleteConfirmId(null)}>
+        <DialogTitle>Potwierdzenie usunięcia</DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Czy na pewno chcesz usunąć misję? Operacji nie będzie można cofnąć.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmId(null)}>Zrezygnuj</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>
+            Usuń
           </Button>
         </DialogActions>
       </Dialog>
