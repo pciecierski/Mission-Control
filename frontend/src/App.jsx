@@ -269,7 +269,6 @@ function App() {
   const [queue, setQueue] = useState([])
   const [inProgress, setInProgress] = useState([])
   const [done, setDone] = useState([])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [dialogItem, setDialogItem] = useState(null)
@@ -302,13 +301,6 @@ function App() {
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://127.0.0.1:8001'
       : '')
-  const statusByColumn = {
-    pool: 'Oczekujący',
-    queue: 'Zakolejkowany',
-    inProgress: 'Realizowane',
-    done: 'Zakończone',
-  }
-
   const fetchEmployees = useCallback(async () => {
     try {
       setEmployeesLoading(true)
@@ -474,7 +466,6 @@ function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      setLoading(true)
       setError('')
       const res = await fetch(`${API_BASE}/api/queue`, { headers: { Accept: 'application/json' } })
       if (!res.ok) throw new Error(`Błąd API: ${res.status}`)
@@ -493,8 +484,6 @@ function App() {
       setDone(sortByStart(doneItems))
     } catch (err) {
       setError(err.message || 'Błąd ładowania')
-    } finally {
-      setLoading(false)
     }
   }, [API_BASE])
 
