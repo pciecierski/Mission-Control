@@ -13,5 +13,8 @@ mkdir -p bootstrap/cache \
   storage/logs
 chmod -R 775 bootstrap/cache storage
 
+echo "Running database migrations..."
+php artisan migrate --force
+
 echo "Starting PHP server on 0.0.0.0:${PORT_VALUE}"
 exec php -S 0.0.0.0:${PORT_VALUE} -t public server.php
