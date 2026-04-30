@@ -116,6 +116,9 @@ class QueueItemController extends Controller
             'planowana_godzina' => [$partial ? 'sometimes' : 'nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'godzina_rozpoczecia' => [$partial ? 'sometimes' : 'nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'status' => [$partial ? 'sometimes' : 'nullable', 'in:Oczekujący,Zakolejkowany,Realizowane,Zakończone'],
+            'pobrana_przez_identyfikator' => [$partial ? 'sometimes' : 'nullable', 'string', 'max:255'],
+            'pobrana_przez_inicjaly' => [$partial ? 'sometimes' : 'nullable', 'string', 'max:8'],
+            'pobrana_at' => [$partial ? 'sometimes' : 'nullable', 'date'],
         ];
 
         return $request->validate($rules);

@@ -18,6 +18,13 @@ class QueueItem extends Model
         'ilosc_zamowien',
         'position',
         'status',
+        'pobrana_przez_identyfikator',
+        'pobrana_przez_inicjaly',
+        'pobrana_at',
+    ];
+
+    protected $casts = [
+        'pobrana_at' => 'datetime',
     ];
 
     public function orders()

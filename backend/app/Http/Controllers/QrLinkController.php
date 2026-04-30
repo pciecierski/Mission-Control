@@ -20,7 +20,10 @@ class QrLinkController extends Controller
         try {
             $resp = $this->qrUploadClient()->post(config('services.qr_upload.url'), $data);
         } catch (Throwable $e) {
-            Log::error('QR link proxy: request failed', ['exception' => $e]);
+            Log::error('QR link proxy: request failed', [
+                'message' => $e->getMessage(),
+                'type' => get_class($e),
+            ]);
 
             return response()->json([
                 'message' => 'Nie udało się połączyć z serwisem QR.',
@@ -44,7 +47,9 @@ class QrLinkController extends Controller
     private function qrUploadClient(): PendingRequest
     {
         $verify = config('services.qr_upload.verify_ssl');
-        $req = Http::asJson()->timeout(30);
+        $req = Http::asJson()
+            ->connectTimeout(8)
+            ->timeout(20);
 
         if ($this->shouldDisableSslVerify($verify)) {
             return $req->withoutVerifying();

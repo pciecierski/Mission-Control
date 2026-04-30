@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   AppBar,
   Toolbar,
@@ -18,10 +18,22 @@ import {
   Button,
   GlobalStyles,
   Link,
+  Drawer,
+  List,
+  ListItemButton,
+  ListItemText,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
 } from '@mui/material'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PrintIcon from '@mui/icons-material/Print'
+import MenuIcon from '@mui/icons-material/Menu'
 
 const sortByStart = (arr) =>
   [...arr].sort((a, b) => {
@@ -43,6 +55,9 @@ const mapFromApi = (item) => ({
   iloscZamowien: item.ilosc_zamowien,
   status: item.status ?? 'Oczekujący',
   orders: item.orders ?? [],
+  pobranaAt: item.pobrana_at ?? null,
+  operatorIdentifier: item.pobrana_przez_identyfikator ?? '',
+  operatorInitials: item.pobrana_przez_inicjaly ?? '',
 })
 
 function Tile({
@@ -161,6 +176,11 @@ function Tile({
           </Stack>
         )}
       </Stack>
+      {awizacja.status === 'Realizowane' && awizacja.operatorInitials && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}>
+          <Chip size="small" label={awizacja.operatorInitials} color="success" variant="outlined" />
+        </Box>
+      )}
     </Paper>
   )
 }
@@ -244,6 +264,7 @@ function Column({
 }
 
 function App() {
+  const [employees, setEmployees] = useState([])
   const [pool, setPool] = useState([])
   const [queue, setQueue] = useState([])
   const [inProgress, setInProgress] = useState([])
@@ -259,13 +280,175 @@ function App() {
   const [linksCache, setLinksCache] = useState({})
   const [docUrlByAwizacja, setDocUrlByAwizacja] = useState({})
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [activeModule, setActiveModule] = useState('missions')
+  const [addEmployeeOpen, setAddEmployeeOpen] = useState(false)
+  const [employeesLoading, setEmployeesLoading] = useState(false)
+  const [newEmployee, setNewEmployee] = useState({
+    id: '',
+    firstName: '',
+    lastName: '',
+  })
+  const employeeIdInputRef = useRef(null)
+  const missionEmployeeIdInputRef = useRef(null)
+  const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
+  const [verifyIdentifier, setVerifyIdentifier] = useState('')
+  const [verifyError, setVerifyError] = useState('')
+  const [isVerifyingIdentifier, setIsVerifyingIdentifier] = useState(false)
+  const [verifiedOperator, setVerifiedOperator] = useState(null)
 
-  const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+  const API_BASE =
+    import.meta.env.VITE_API_BASE ??
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://127.0.0.1:8001'
+      : '')
   const statusByColumn = {
     pool: 'Oczekujący',
     queue: 'Zakolejkowany',
     inProgress: 'Realizowane',
     done: 'Zakończone',
+  }
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      setEmployeesLoading(true)
+      const res = await fetch(`${API_BASE}/api/employees`, {
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) throw new Error(`Błąd pobierania pracowników (${res.status})`)
+      const data = await res.json().catch(() => [])
+      const normalized = (data || []).map((employee) => ({
+        id: employee.id,
+        identifier: employee.identifier,
+        fullName: `${employee.first_name} ${employee.last_name}`.trim(),
+        isActive: Boolean(employee.is_active),
+      }))
+      setEmployees(normalized)
+    } catch (err) {
+      setError(err.message || 'Nie udało się pobrać pracowników')
+    } finally {
+      setEmployeesLoading(false)
+    }
+  }, [API_BASE])
+
+  const handleDeleteEmployee = async (employeeId) => {
+    const prev = [...employees]
+    setEmployees((current) => current.filter((employee) => employee.id !== employeeId))
+    try {
+      const res = await fetch(`${API_BASE}/api/employees/${employeeId}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) throw new Error(`Nie udało się usunąć pracownika (${res.status})`)
+    } catch (err) {
+      setEmployees(prev)
+      setError(err.message || 'Nie udało się usunąć pracownika')
+    }
+  }
+
+  const handleDeactivateEmployee = async (employeeId) => {
+    const prev = [...employees]
+    setEmployees((current) =>
+      current.map((employee) =>
+        employee.id === employeeId ? { ...employee, isActive: false } : employee
+      )
+    )
+
+    try {
+      const res = await fetch(`${API_BASE}/api/employees/${employeeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ is_active: false }),
+      })
+      if (!res.ok) throw new Error(`Nie udało się dezaktywować pracownika (${res.status})`)
+    } catch (err) {
+      setEmployees(prev)
+      setError(err.message || 'Nie udało się dezaktywować pracownika')
+    }
+  }
+
+  const handleOpenAddEmployee = () => {
+    setNewEmployee({ id: '', firstName: '', lastName: '' })
+    setAddEmployeeOpen(true)
+  }
+
+  const handleAddEmployee = async () => {
+    const identifier = newEmployee.id.trim()
+    const firstName = newEmployee.firstName.trim()
+    const lastName = newEmployee.lastName.trim()
+    if (!identifier || !firstName || !lastName) return
+
+    try {
+      const res = await fetch(`${API_BASE}/api/employees`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          identifier,
+          first_name: firstName,
+          last_name: lastName,
+        }),
+      })
+      if (!res.ok) throw new Error(`Nie udało się dodać pracownika (${res.status})`)
+      const created = await res.json()
+      setEmployees((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          identifier: created.identifier,
+          fullName: `${created.first_name} ${created.last_name}`.trim(),
+          isActive: Boolean(created.is_active),
+        },
+      ])
+      setAddEmployeeOpen(false)
+    } catch (err) {
+      setError(err.message || 'Nie udało się dodać pracownika')
+    }
+  }
+
+  const openMissionVerifyDialog = () => {
+    setVerifyIdentifier('')
+    setVerifyError('')
+    setVerifyDialogOpen(true)
+  }
+
+  const verifyEmployeeAndPrint = async () => {
+    const identifier = verifyIdentifier.trim()
+    if (!identifier) {
+      setVerifyError('Niepoprawny identyfikator')
+      return
+    }
+
+    try {
+      setIsVerifyingIdentifier(true)
+      const res = await fetch(`${API_BASE}/api/employees`, {
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) throw new Error(`Nie udało się zweryfikować pracownika (${res.status})`)
+
+      const data = await res.json().catch(() => [])
+      const matchedEmployee = (data || []).find(
+        (employee) => employee.identifier === identifier && Boolean(employee.is_active)
+      )
+
+      if (!matchedEmployee) {
+        setVerifyError('Niepoprawny identyfikator')
+        return
+      }
+
+      setVerifyDialogOpen(false)
+      setVerifiedOperator({
+        identifier: matchedEmployee.identifier,
+        initials: `${(matchedEmployee.first_name?.[0] ?? '').toUpperCase()}${(matchedEmployee.last_name?.[0] ?? '').toUpperCase()}`,
+      })
+      await handleMarkInProgressAndPrint({
+        identifier: matchedEmployee.identifier,
+        initials: `${(matchedEmployee.first_name?.[0] ?? '').toUpperCase()}${(matchedEmployee.last_name?.[0] ?? '').toUpperCase()}`,
+      })
+    } catch (err) {
+      setVerifyError(err.message || 'Nie udało się zweryfikować pracownika')
+    } finally {
+      setIsVerifyingIdentifier(false)
+    }
   }
 
   const reorderQueueOnServer = async (orderedIds) => {
@@ -279,11 +462,11 @@ function App() {
     return res.json()
   }
 
-  const patchStatus = async (id, status) => {
+  const patchStatus = async (id, status, extraPayload = {}) => {
     const res = await fetch(`${API_BASE}/api/queue/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...extraPayload }),
     })
     if (!res.ok) throw new Error(`PATCH status failed (${res.status})`)
     return res.json().catch(() => ({}))
@@ -313,11 +496,16 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [API_BASE])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  useEffect(() => {
+    if (activeModule !== 'employees') return
+    fetchEmployees()
+  }, [activeModule, fetchEmployees])
 
   const handleDragEnd = async (result) => {
     if (isWorkerMode) return
@@ -424,6 +612,12 @@ function App() {
     setExpandedId(null)
   }
 
+  const openModule = (module) => {
+    if (isWorkerMode && module === 'employees') return
+    setActiveModule(module)
+    setMenuOpen(false)
+  }
+
   const confirmLeaderMode = () => {
     setIsWorkerMode(false)
     setConfirmModeOpen(false)
@@ -438,6 +632,26 @@ function App() {
     const cached = linksCache[dialogItem.numerAwizacji]
     setQrCodeUrl(cached || '')
   }, [dialogItem, linksCache])
+
+  useEffect(() => {
+    if (!addEmployeeOpen) return
+    const focusTimeout = setTimeout(() => {
+      employeeIdInputRef.current?.focus()
+      employeeIdInputRef.current?.select?.()
+    }, 80)
+
+    return () => clearTimeout(focusTimeout)
+  }, [addEmployeeOpen])
+
+  useEffect(() => {
+    if (!verifyDialogOpen) return
+    const focusTimeout = setTimeout(() => {
+      missionEmployeeIdInputRef.current?.focus()
+      missionEmployeeIdInputRef.current?.select?.()
+    }, 80)
+
+    return () => clearTimeout(focusTimeout)
+  }, [verifyDialogOpen])
 
   const handleCreateLink = async () => {
     if (!dialogItem?.numerAwizacji) return
@@ -472,7 +686,7 @@ function App() {
     }
   }
 
-  const handleMarkInProgressAndPrint = async () => {
+  const handleMarkInProgressAndPrint = async (operator = verifiedOperator) => {
     if (!dialogItem?.id) {
       window.print()
       return
@@ -493,14 +707,25 @@ function App() {
     }
 
     const updatedQueue = queue.filter((i) => i.id !== dialogItem.id)
-    const updatedItem = { ...fromQueue, status: 'Realizowane' }
+    const pickedAt = new Date().toISOString()
+    const updatedItem = {
+      ...fromQueue,
+      status: 'Realizowane',
+      pobranaAt: pickedAt,
+      operatorIdentifier: operator?.identifier ?? '',
+      operatorInitials: operator?.initials ?? '',
+    }
     const updatedInProgress = sortByStart([...inProgress, updatedItem])
 
     setQueue(updatedQueue)
     setInProgress(updatedInProgress)
 
     try {
-      await patchStatus(dialogItem.id, 'Realizowane')
+      await patchStatus(dialogItem.id, 'Realizowane', {
+        pobrana_przez_identyfikator: operator?.identifier ?? null,
+        pobrana_przez_inicjaly: operator?.initials ?? null,
+        pobrana_at: pickedAt,
+      })
       window.print()
     } catch (err) {
       setError(err.message || 'Nie udało się zmienić statusu')
@@ -569,6 +794,9 @@ function App() {
       />
       <AppBar position="static" color="primary" elevation={0}>
         <Toolbar>
+          <IconButton color="inherit" edge="start" onClick={() => setMenuOpen(true)} sx={{ mr: 1 }}>
+            <MenuIcon />
+          </IconButton>
           <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
             Zarządzanie misjami
           </Typography>
@@ -584,7 +812,106 @@ function App() {
         </Toolbar>
       </AppBar>
 
+      <Drawer anchor="left" open={menuOpen} onClose={() => setMenuOpen(false)}>
+        <Box sx={{ width: 280 }}>
+          <List>
+            <ListItemButton
+              selected={activeModule === 'missions'}
+              onClick={() => openModule('missions')}
+            >
+              <ListItemText primary="Zarządzanie misjami" />
+            </ListItemButton>
+            <ListItemButton
+              selected={activeModule === 'employees'}
+              disabled={isWorkerMode}
+              onClick={() => openModule('employees')}
+            >
+              <ListItemText
+                primary="Zarządzanie pracownikami"
+                secondary={isWorkerMode ? 'Dostępne tylko w trybie Lider' : null}
+              />
+            </ListItemButton>
+          </List>
+        </Box>
+      </Drawer>
+
       <Container sx={{ py: 4 }} maxWidth={false}>
+        {activeModule === 'employees' ? (
+          <Paper elevation={1} sx={{ p: 3 }}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              spacing={1.5}
+            >
+              <Typography variant="h5" fontWeight={700}>
+                Zarządzanie pracownikami
+              </Typography>
+              <Button variant="contained" onClick={handleOpenAddEmployee}>
+                Dodaj nowego pracownika
+              </Button>
+            </Stack>
+            <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Imię i nazwisko</TableCell>
+                    <TableCell>Identyfikator</TableCell>
+                    <TableCell>Status aktywności</TableCell>
+                    <TableCell align="right">Akcje</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {employeesLoading && (
+                    <TableRow>
+                      <TableCell colSpan={4}>Ładowanie pracowników...</TableCell>
+                    </TableRow>
+                  )}
+                  {!employeesLoading && employees.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4}>Brak pracowników.</TableCell>
+                    </TableRow>
+                  )}
+                  {employees.map((employee) => (
+                    <TableRow key={employee.id} hover>
+                      <TableCell>{employee.fullName}</TableCell>
+                      <TableCell>{employee.identifier}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={employee.isActive ? 'Aktywny' : 'Nieaktywny'}
+                          color={employee.isActive ? 'success' : 'default'}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="warning"
+                            disabled={!employee.isActive}
+                            onClick={() => handleDeactivateEmployee(employee.id)}
+                          >
+                            Dezaktywuj
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => handleDeleteEmployee(employee.id)}
+                          >
+                            Usuń
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        ) : (
+          <>
         {error && (
           <Paper
             elevation={0}
@@ -668,6 +995,8 @@ function App() {
             </Grid>
           </Grid>
         </DragDropContext>
+          </>
+        )}
       </Container>
 
       <Dialog open={Boolean(dialogItem)} onClose={() => setDialogItem(null)} maxWidth="sm" fullWidth>
@@ -752,10 +1081,57 @@ function App() {
           >
             {creatingLink ? 'Tworzenie...' : 'Utwórz URL'}
           </Button>
-          <Button startIcon={<PrintIcon />} variant="contained" onClick={handleMarkInProgressAndPrint}>
-            Drukuj
+          <Button
+            startIcon={<PrintIcon />}
+            variant="contained"
+            onClick={() => {
+              setVerifiedOperator(null)
+              openMissionVerifyDialog()
+            }}
+          >
+            POBIERZ MISJĘ I DRUKUJ
           </Button>
           <Button onClick={() => setDialogItem(null)}>Zamknij</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={verifyDialogOpen} onClose={() => setVerifyDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Weryfikacja pracownika</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5} sx={{ pt: 1 }}>
+            <TextField
+              label="Identyfikator"
+              value={verifyIdentifier}
+              onChange={(e) => {
+                setVerifyIdentifier(e.target.value)
+                if (verifyError) setVerifyError('')
+              }}
+              inputRef={missionEmployeeIdInputRef}
+              autoFocus
+              fullWidth
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  verifyEmployeeAndPrint()
+                }
+              }}
+            />
+            {verifyError && (
+              <Typography color="error.main" variant="body2">
+                {verifyError}
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVerifyDialogOpen(false)}>Anuluj</Button>
+          <Button
+            variant="contained"
+            onClick={verifyEmployeeAndPrint}
+            disabled={isVerifyingIdentifier || !verifyIdentifier.trim()}
+          >
+            {isVerifyingIdentifier ? 'Weryfikacja...' : 'Potwierdź'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -783,6 +1159,44 @@ function App() {
           <Button onClick={() => setDeleteConfirmId(null)}>Zrezygnuj</Button>
           <Button color="error" variant="contained" onClick={handleDelete}>
             Usuń
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addEmployeeOpen} onClose={() => setAddEmployeeOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Dodaj nowego pracownika</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Identyfikator"
+              value={newEmployee.id}
+              onChange={(e) => setNewEmployee((prev) => ({ ...prev, id: e.target.value }))}
+              inputRef={employeeIdInputRef}
+              autoFocus
+              fullWidth
+            />
+            <TextField
+              label="Imię"
+              value={newEmployee.firstName}
+              onChange={(e) => setNewEmployee((prev) => ({ ...prev, firstName: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Nazwisko"
+              value={newEmployee.lastName}
+              onChange={(e) => setNewEmployee((prev) => ({ ...prev, lastName: e.target.value }))}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddEmployeeOpen(false)}>Anuluj</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddEmployee}
+            disabled={!newEmployee.id.trim() || !newEmployee.firstName.trim() || !newEmployee.lastName.trim()}
+          >
+            Dodaj
           </Button>
         </DialogActions>
       </Dialog>
