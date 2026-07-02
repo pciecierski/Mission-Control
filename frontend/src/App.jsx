@@ -675,15 +675,23 @@ function App() {
     }
   }
 
+  const triggerPrint = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print()
+      })
+    })
+  }
+
   const handleMarkInProgressAndPrint = async (operator = verifiedOperator) => {
     if (!dialogItem?.id) {
-      window.print()
+      triggerPrint()
       return
     }
 
     // Jeśli już realizowane, tylko drukuj
     if (dialogItem.status === 'Realizowane') {
-      window.print()
+      triggerPrint()
       return
     }
 
@@ -691,7 +699,7 @@ function App() {
     const prevInProgress = [...inProgress]
     const fromQueue = queue.find((i) => i.id === dialogItem.id)
     if (!fromQueue) {
-      window.print()
+      triggerPrint()
       return
     }
 
@@ -715,7 +723,7 @@ function App() {
         pobrana_przez_inicjaly: operator?.initials ?? null,
         pobrana_at: pickedAt,
       })
-      window.print()
+      triggerPrint()
     } catch (err) {
       setError(err.message || 'Nie udało się zmienić statusu')
       setQueue(prevQueue)
@@ -742,17 +750,21 @@ function App() {
             'body > *': {
               display: 'none !important',
             },
-            '.MuiDialog-root, .MuiDialog-container, .MuiDialog-paper': {
-              display: 'block !important',
-              position: 'static',
-              inset: '0 !important',
-              transform: 'none !important',
-              boxShadow: 'none',
-              margin: 0,
-              background: '#fff !important',
-              backgroundImage: 'none !important',
+            '.MuiDialog-root': {
+              display: 'none !important',
             },
-            '.MuiDialogTitle-root, .MuiDialogActions-root': {
+            '.MuiDialog-root:has(.print-content), .MuiDialog-root:has(.print-content) .MuiDialog-container, .MuiDialog-root:has(.print-content) .MuiDialog-paper':
+              {
+                display: 'block !important',
+                position: 'static',
+                inset: '0 !important',
+                transform: 'none !important',
+                boxShadow: 'none',
+                margin: 0,
+                background: '#fff !important',
+                backgroundImage: 'none !important',
+              },
+            '.MuiDialogTitle-root, .MuiDialogActions-root, .MuiBackdrop-root': {
               display: 'none !important',
             },
             '.print-content': {
@@ -1084,7 +1096,13 @@ function App() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={verifyDialogOpen} onClose={() => setVerifyDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={verifyDialogOpen}
+        onClose={() => setVerifyDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        className="no-print"
+      >
         <DialogTitle>Weryfikacja pracownika</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.5} sx={{ pt: 1 }}>
