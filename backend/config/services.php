@@ -36,11 +36,11 @@ return [
     ],
 
     /*
-    | QR upload API (qrupload.dclabs.pl). Na Windows często brakuje CA bundle w PHP —
+    | QR upload API (qrupload.dcsandbox.dev). Na Windows często brakuje CA bundle w PHP —
     | ustaw QR_UPLOAD_VERIFY_SSL=false w .env (tylko dev) albo ścieżkę do cacert.pem.
     */
     'qr_upload' => [
-        'url' => env('QR_UPLOAD_API_URL', 'https://qrupload.dclabs.pl/api/links'),
+        'url' => env('QR_UPLOAD_API_URL', 'https://qrupload.dcsandbox.dev/api/links'),
         'verify_ssl' => env('QR_UPLOAD_VERIFY_SSL', true),
     ],
 
