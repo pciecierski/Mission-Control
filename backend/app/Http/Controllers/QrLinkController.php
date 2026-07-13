@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\QueueItem;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -16,6 +17,12 @@ class QrLinkController extends Controller
         $data = $request->validate([
             'sourceDocumentNumber' => ['required', 'string', 'max:255'],
         ]);
+
+        $queueItem = QueueItem::where('numer_awizacji', $data['sourceDocumentNumber'])->first();
+
+        if ($queueItem && ($queueItem->doc_upload_url || $queueItem->qr_code_url)) {
+            return response()->json($this->formatLinkPayload($queueItem));
+        }
 
         try {
             $resp = $this->qrUploadClient()->post(config('services.qr_upload.url'), $data);
@@ -38,7 +45,29 @@ class QrLinkController extends Controller
             );
         }
 
-        return response()->json($resp->json(), $resp->status());
+        $payload = $resp->json();
+        $uploadUrl = $payload['uploadUrl'] ?? null;
+        $qrCodeUrl = $payload['qrCodeUrl'] ?? null;
+
+        if ($queueItem && ($uploadUrl || $qrCodeUrl)) {
+            $queueItem->update([
+                'doc_upload_url' => $uploadUrl ?? $queueItem->doc_upload_url,
+                'qr_code_url' => $qrCodeUrl ?? $queueItem->qr_code_url,
+            ]);
+        }
+
+        return response()->json($payload, $resp->status());
+    }
+
+    /**
+     * @return array{uploadUrl: ?string, qrCodeUrl: ?string}
+     */
+    private function formatLinkPayload(QueueItem $queueItem): array
+    {
+        return [
+            'uploadUrl' => $queueItem->doc_upload_url,
+            'qrCodeUrl' => $queueItem->qr_code_url,
+        ];
     }
 
     /**

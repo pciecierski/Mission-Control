@@ -21,6 +21,8 @@ class QueueItem extends Model
         'pobrana_przez_identyfikator',
         'pobrana_przez_inicjaly',
         'pobrana_at',
+        'doc_upload_url',
+        'qr_code_url',
     ];
 
     protected $casts = [

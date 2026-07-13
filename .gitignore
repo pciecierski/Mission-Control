@@ -12,17 +12,11 @@
 /backend/public/index.html
 /backend/public/vite.svg
 /backend/vendor
-/backend/storage
 /backend/.env
 /backend/.env.*
+!/backend/.env.example
 /backend/bootstrap/cache/*.php
 /backend/storage/*.key
-
-# Logs
-/backend/storage/logs
-/backend/storage/framework/cache
-/backend/storage/framework/sessions
-/backend/storage/framework/views
 
 # IDE/editor
 .idea
