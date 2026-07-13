@@ -58,6 +58,8 @@ const mapFromApi = (item) => ({
   pobranaAt: item.pobrana_at ?? null,
   operatorIdentifier: item.pobrana_przez_identyfikator ?? '',
   operatorInitials: item.pobrana_przez_inicjaly ?? '',
+  docUrl: item.doc_upload_url ?? '',
+  qrCodeUrl: item.qr_code_url ?? '',
 })
 
 function Tile({
@@ -276,8 +278,6 @@ function App() {
   const [confirmModeOpen, setConfirmModeOpen] = useState(false)
   const [creatingLink, setCreatingLink] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState('')
-  const [linksCache, setLinksCache] = useState({})
-  const [docUrlByAwizacja, setDocUrlByAwizacja] = useState({})
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeModule, setActiveModule] = useState('missions')
@@ -614,13 +614,8 @@ function App() {
   }
 
   useEffect(() => {
-    if (!dialogItem?.numerAwizacji) {
-      setQrCodeUrl('')
-      return
-    }
-    const cached = linksCache[dialogItem.numerAwizacji]
-    setQrCodeUrl(cached || '')
-  }, [dialogItem, linksCache])
+    setQrCodeUrl(dialogItem?.qrCodeUrl || '')
+  }, [dialogItem])
 
   useEffect(() => {
     if (!addEmployeeOpen) return
@@ -644,7 +639,7 @@ function App() {
 
   const handleCreateLink = async () => {
     if (!dialogItem?.numerAwizacji) return
-    if (linksCache[dialogItem.numerAwizacji] || docUrlByAwizacja[dialogItem.numerAwizacji]) {
+    if (dialogItem.docUrl || dialogItem.qrCodeUrl) {
       window.alert('Link już utworzony dla tego obiektu.')
       return
     }
@@ -660,12 +655,28 @@ function App() {
       const payload = await res.json().catch(() => null)
       const uploadUrl = payload?.uploadUrl
       const qrUrl = payload?.qrCodeUrl
-      if (uploadUrl) {
-        setDocUrlByAwizacja((prev) => ({ ...prev, [dialogItem.numerAwizacji]: uploadUrl }))
-      }
-      if (qrUrl) {
-        setQrCodeUrl(qrUrl)
-        setLinksCache((prev) => ({ ...prev, [dialogItem.numerAwizacji]: qrUrl }))
+      if (uploadUrl || qrUrl) {
+        const updatedItem = {
+          ...dialogItem,
+          docUrl: uploadUrl || dialogItem.docUrl,
+          qrCodeUrl: qrUrl || dialogItem.qrCodeUrl,
+        }
+        setDialogItem(updatedItem)
+        if (qrUrl) setQrCodeUrl(qrUrl)
+        const mergeLinks = (items) =>
+          items.map((item) =>
+            item.id === updatedItem.id
+              ? {
+                  ...item,
+                  docUrl: updatedItem.docUrl,
+                  qrCodeUrl: updatedItem.qrCodeUrl,
+                }
+              : item
+          )
+        setPool((items) => mergeLinks(items))
+        setQueue((items) => mergeLinks(items))
+        setInProgress((items) => mergeLinks(items))
+        setDone((items) => mergeLinks(items))
       }
       window.alert('Link utworzony.')
     } catch (err) {
@@ -932,7 +943,6 @@ function App() {
                 items={pool.map((item) => ({
                   ...item,
                   isDragDisabled: isWorkerMode,
-                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={
@@ -952,7 +962,6 @@ function App() {
                 items={queue.map((item) => ({
                   ...item,
                   isDragDisabled: isWorkerMode,
-                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
@@ -968,7 +977,6 @@ function App() {
                 items={inProgress.map((item) => ({
                   ...item,
                   isDragDisabled: true,
-                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => {
@@ -986,7 +994,6 @@ function App() {
                 items={done.map((item) => ({
                   ...item,
                   isDragDisabled: true,
-                  docUrl: docUrlByAwizacja[item.numerAwizacji],
                 }))}
                 expandedId={expandedId}
                 onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
@@ -1076,8 +1083,8 @@ function App() {
             disabled={
               creatingLink ||
               !dialogItem?.numerAwizacji ||
-              Boolean(qrCodeUrl) ||
-              Boolean(docUrlByAwizacja[dialogItem?.numerAwizacji])
+              Boolean(dialogItem?.qrCodeUrl) ||
+              Boolean(dialogItem?.docUrl)
             }
           >
             {creatingLink ? 'Tworzenie...' : 'Utwórz URL'}
