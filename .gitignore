@@ -15,6 +15,7 @@
 /backend/storage
 /backend/.env
 /backend/.env.*
+!/backend/.env.example
 /backend/bootstrap/cache/*.php
 /backend/storage/*.key
 
