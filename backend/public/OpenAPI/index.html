@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mission Control — OpenAPI</title>
+    <base href="/OpenAPI/" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css"
@@ -55,13 +56,13 @@
       <h1>Mission Control API</h1>
       <p>
         Specyfikacja OpenAPI:
-        <a href="./openapi.yaml">openapi.yaml</a>
+        <a href="/OpenAPI/openapi.yaml">openapi.yaml</a>
         ·
-        <a href="./queue.yaml">queue.yaml</a>
+        <a href="/OpenAPI/queue.yaml">queue.yaml</a>
         ·
-        <a href="./employees.yaml">employees.yaml</a>
+        <a href="/OpenAPI/employees.yaml">employees.yaml</a>
         ·
-        <a href="./links.yaml">links.yaml</a>
+        <a href="/OpenAPI/links.yaml">links.yaml</a>
       </p>
     </header>
     <div id="swagger-ui"></div>
@@ -77,10 +78,10 @@
       window.onload = () => {
         window.ui = SwaggerUIBundle({
           urls: [
-            { url: './openapi.yaml', name: 'Wszystkie endpointy' },
-            { url: './queue.yaml', name: 'Queue' },
-            { url: './employees.yaml', name: 'Employees' },
-            { url: './links.yaml', name: 'Links / QR' },
+            { url: '/OpenAPI/openapi.yaml', name: 'Wszystkie endpointy' },
+            { url: '/OpenAPI/queue.yaml', name: 'Queue' },
+            { url: '/OpenAPI/employees.yaml', name: 'Employees' },
+            { url: '/OpenAPI/links.yaml', name: 'Links / QR' },
           ],
           'urls.primaryName': 'Wszystkie endpointy',
           dom_id: '#swagger-ui',

@@ -12,7 +12,8 @@ class OpenApiDocsTest extends TestCase
             ->assertOk()
             ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
             ->assertSee('swagger-ui', false)
-            ->assertSee('openapi.yaml', false);
+            ->assertSee('/OpenAPI/openapi.yaml', false)
+            ->assertSee("url: '/OpenAPI/openapi.yaml'", false);
     }
 
     public function test_openapi_yaml_specs_are_available(): void
