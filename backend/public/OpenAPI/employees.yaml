@@ -1,0 +1,88 @@
+openapi: 3.0.3
+info:
+  title: Mission Control API — Employees
+  description: Endpointy zarządzania pracownikami.
+  version: 1.0.0
+servers:
+  - url: /api
+tags:
+  - name: Employees
+paths:
+  /employees:
+    get:
+      tags: [Employees]
+      summary: Lista pracowników
+      operationId: listEmployees
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    identifier: { type: string }
+                    first_name: { type: string }
+                    last_name: { type: string }
+                    is_active: { type: boolean }
+    post:
+      tags: [Employees]
+      summary: Dodaj pracownika
+      operationId: createEmployee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, first_name, last_name]
+              properties:
+                identifier: { type: string }
+                first_name: { type: string }
+                last_name: { type: string }
+      responses:
+        '201':
+          description: Utworzono
+        '422':
+          description: Błąd walidacji
+  /employees/{employee}:
+    patch:
+      tags: [Employees]
+      summary: Aktualizuj pracownika
+      operationId: updateEmployee
+      parameters:
+        - name: employee
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identifier: { type: string }
+                first_name: { type: string }
+                last_name: { type: string }
+                is_active: { type: boolean }
+      responses:
+        '200':
+          description: Zaktualizowano
+        '404':
+          description: Nie znaleziono
+    delete:
+      tags: [Employees]
+      summary: Usuń pracownika
+      operationId: deleteEmployee
+      parameters:
+        - name: employee
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Usunięto

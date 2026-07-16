@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mission Control — OpenAPI</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css"
+      crossorigin
+    />
+    <style>
+      html {
+        box-sizing: border-box;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: inherit;
+      }
+      body {
+        margin: 0;
+        background: #fafafa;
+      }
+      .topbar {
+        display: none;
+      }
+      .docs-header {
+        padding: 16px 24px;
+        background: #1b4f72;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+      }
+      .docs-header h1 {
+        margin: 0 0 6px;
+        font-size: 1.25rem;
+        font-weight: 700;
+      }
+      .docs-header p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+      }
+      .docs-header a {
+        color: #d6eaf8;
+      }
+      #swagger-ui {
+        max-width: 1460px;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="docs-header">
+      <h1>Mission Control API</h1>
+      <p>
+        Specyfikacja OpenAPI:
+        <a href="./openapi.yaml">openapi.yaml</a>
+        ·
+        <a href="./queue.yaml">queue.yaml</a>
+        ·
+        <a href="./employees.yaml">employees.yaml</a>
+        ·
+        <a href="./links.yaml">links.yaml</a>
+      </p>
+    </header>
+    <div id="swagger-ui"></div>
+    <script
+      src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
+      crossorigin
+    ></script>
+    <script
+      src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"
+      crossorigin
+    ></script>
+    <script>
+      window.onload = () => {
+        window.ui = SwaggerUIBundle({
+          urls: [
+            { url: './openapi.yaml', name: 'Wszystkie endpointy' },
+            { url: './queue.yaml', name: 'Queue' },
+            { url: './employees.yaml', name: 'Employees' },
+            { url: './links.yaml', name: 'Links / QR' },
+          ],
+          'urls.primaryName': 'Wszystkie endpointy',
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: 'StandaloneLayout',
+          tryItOutEnabled: true,
+        })
+      }
+    </script>
+  </body>
+</html>

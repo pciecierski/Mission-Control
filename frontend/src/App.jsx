@@ -42,6 +42,8 @@ const sortByStart = (arr) =>
     return aDate - bDate
   })
 
+const POLL_INTERVAL_MS = 5000
+
 const mapFromApi = (item) => ({
   id: String(item.id),
   numerAwizacji: item.numer_awizacji,
@@ -290,20 +292,24 @@ function App() {
   })
   const employeeIdInputRef = useRef(null)
   const missionEmployeeIdInputRef = useRef(null)
+  const isDraggingRef = useRef(false)
+  const syncInFlightRef = useRef(false)
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
   const [verifyIdentifier, setVerifyIdentifier] = useState('')
   const [verifyError, setVerifyError] = useState('')
   const [isVerifyingIdentifier, setIsVerifyingIdentifier] = useState(false)
   const [verifiedOperator, setVerifiedOperator] = useState(null)
+  const [lastSyncedAt, setLastSyncedAt] = useState(null)
 
   const API_BASE =
     import.meta.env.VITE_API_BASE ??
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://127.0.0.1:8001'
       : '')
-  const fetchEmployees = useCallback(async () => {
+
+  const fetchEmployees = useCallback(async ({ silent = false } = {}) => {
     try {
-      setEmployeesLoading(true)
+      if (!silent) setEmployeesLoading(true)
       const res = await fetch(`${API_BASE}/api/employees`, {
         headers: { Accept: 'application/json' },
       })
@@ -316,10 +322,11 @@ function App() {
         isActive: Boolean(employee.is_active),
       }))
       setEmployees(normalized)
+      if (silent) setLastSyncedAt(new Date())
     } catch (err) {
-      setError(err.message || 'Nie udało się pobrać pracowników')
+      if (!silent) setError(err.message || 'Nie udało się pobrać pracowników')
     } finally {
-      setEmployeesLoading(false)
+      if (!silent) setEmployeesLoading(false)
     }
   }, [API_BASE])
 
@@ -464,28 +471,43 @@ function App() {
     return res.json().catch(() => ({}))
   }
 
-  const fetchData = useCallback(async () => {
+  const applyQueueSnapshot = useCallback((normalized) => {
+    const poolItems = normalized.filter(
+      (i) => !['Zakolejkowany', 'Realizowane', 'Zakończone'].includes(i.status)
+    )
+    const queueItems = normalized.filter((i) => i.status === 'Zakolejkowany')
+    const inProgressItems = normalized.filter((i) => i.status === 'Realizowane')
+    const doneItems = normalized.filter((i) => i.status === 'Zakończone')
+    setPool(sortByStart(poolItems))
+    setQueue(queueItems)
+    setInProgress(sortByStart(inProgressItems))
+    setDone(sortByStart(doneItems))
+    setDialogItem((prev) => {
+      if (!prev) return prev
+      const fresh = normalized.find((item) => item.id === prev.id)
+      return fresh ?? prev
+    })
+  }, [])
+
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
+    if (silent && (isDraggingRef.current || syncInFlightRef.current)) return
+    if (silent) syncInFlightRef.current = true
     try {
-      setError('')
+      if (!silent) setError('')
       const res = await fetch(`${API_BASE}/api/queue`, { headers: { Accept: 'application/json' } })
       if (!res.ok) throw new Error(`Błąd API: ${res.status}`)
       const data = await res.json().catch(() => null)
       if (!data) throw new Error('Błąd parsowania odpowiedzi API')
+      if (silent && isDraggingRef.current) return
       const normalized = (data || []).map(mapFromApi)
-      const poolItems = normalized.filter(
-        (i) => !['Zakolejkowany', 'Realizowane', 'Zakończone'].includes(i.status)
-      )
-      const queueItems = normalized.filter((i) => i.status === 'Zakolejkowany')
-      const inProgressItems = normalized.filter((i) => i.status === 'Realizowane')
-      const doneItems = normalized.filter((i) => i.status === 'Zakończone')
-      setPool(sortByStart(poolItems))
-      setQueue(queueItems)
-      setInProgress(sortByStart(inProgressItems))
-      setDone(sortByStart(doneItems))
+      applyQueueSnapshot(normalized)
+      setLastSyncedAt(new Date())
     } catch (err) {
-      setError(err.message || 'Błąd ładowania')
+      if (!silent) setError(err.message || 'Błąd ładowania')
+    } finally {
+      if (silent) syncInFlightRef.current = false
     }
-  }, [API_BASE])
+  }, [API_BASE, applyQueueSnapshot])
 
   useEffect(() => {
     fetchData()
@@ -496,7 +518,36 @@ function App() {
     fetchEmployees()
   }, [activeModule, fetchEmployees])
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+
+    const tick = () => {
+      if (document.visibilityState === 'hidden') return
+      if (activeModule === 'missions') {
+        fetchData({ silent: true })
+      } else if (activeModule === 'employees') {
+        fetchEmployees({ silent: true })
+      }
+    }
+
+    const intervalId = setInterval(tick, POLL_INTERVAL_MS)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [activeModule, fetchData, fetchEmployees])
+
+  const handleDragStart = () => {
+    isDraggingRef.current = true
+  }
+
   const handleDragEnd = async (result) => {
+    isDraggingRef.current = false
     if (isWorkerMode) return
     const { source, destination } = result
     if (!destination) return
@@ -818,6 +869,16 @@ function App() {
             size="small"
             sx={{ mr: 2 }}
           />
+          {lastSyncedAt && (
+            <Typography variant="caption" sx={{ mr: 2, opacity: 0.85 }}>
+              Sync:{' '}
+              {lastSyncedAt.toLocaleTimeString('pl-PL', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              })}
+            </Typography>
+          )}
           <Button variant="outlined" color="inherit" onClick={toggleMode}>
             Zmiana trybu
           </Button>
@@ -934,7 +995,7 @@ function App() {
             </Typography>
           </Paper>
         )}
-        <DragDropContext onDragEnd={handleDragEnd}>
+        <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={4}>
               <Column

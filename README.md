@@ -51,3 +51,8 @@ npm run build
 - `POST /api/employees`
 - `PATCH /api/employees/{employee}`
 - `DELETE /api/employees/{employee}`
+
+## OpenAPI / Swagger UI
+Interactive docs and YAML specs are served at:
+- UI: `/OpenAPI`
+- Specs: `/OpenAPI/openapi.yaml`, `/OpenAPI/queue.yaml`, `/OpenAPI/employees.yaml`, `/OpenAPI/links.yaml`

@@ -1,0 +1,593 @@
+openapi: 3.0.3
+info:
+  title: Mission Control API
+  description: |
+    API aplikacji Mission Control do zarządzania misjami magazynowymi (awizacjami),
+    kolejką, pracownikami oraz proxy linków QR do uploadu dokumentów.
+  version: 1.0.0
+  contact:
+    name: Mission Control
+
+servers:
+  - url: /api
+    description: Relatywna ścieżka API (ta sama domena)
+
+tags:
+  - name: Queue
+    description: Misje / awizacje i kolejka
+  - name: Employees
+    description: Pracownicy operatorzy
+  - name: Links
+    description: Proxy do zewnętrznego serwisu QR upload
+  - name: Debug
+    description: Endpointy pomocnicze (nie na produkcję długoterminowo)
+
+paths:
+  /queue:
+    get:
+      tags: [Queue]
+      summary: Lista wszystkich pozycji kolejki
+      operationId: listQueueItems
+      responses:
+        '200':
+          description: Lista pozycji z zamówieniami
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QueueItem'
+    post:
+      tags: [Queue]
+      summary: Utwórz nową pozycję kolejki
+      operationId: createQueueItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueueItemCreate'
+      responses:
+        '201':
+          description: Utworzono
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueItem'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /queue/{queueItem}:
+    patch:
+      tags: [Queue]
+      summary: Częściowa aktualizacja pozycji (status, dane, zamówienia)
+      operationId: updateQueueItem
+      parameters:
+        - $ref: '#/components/parameters/QueueItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueueItemUpdate'
+      responses:
+        '200':
+          description: Zaktualizowano
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Queue]
+      summary: Usuń pozycję kolejki
+      operationId: deleteQueueItem
+      parameters:
+        - $ref: '#/components/parameters/QueueItemId'
+      responses:
+        '204':
+          description: Usunięto
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /queue/reorder:
+    post:
+      tags: [Queue]
+      summary: Ustaw kolejność pozycji (position)
+      operationId: reorderQueue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  description: ID pozycji w pożądanej kolejności (od 1. pozycji)
+                  items:
+                    type: integer
+                  example: [3, 1, 2]
+      responses:
+        '200':
+          description: Kolejność zapisana
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /closed:
+    post:
+      tags: [Queue]
+      summary: Oznacz misję jako Zakończone po numerze awizacji
+      operationId: closeQueueItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceDocumentNumber]
+              properties:
+                sourceDocumentNumber:
+                  type: string
+                  description: Numer awizacji (numer_awizacji)
+                  example: AW-100
+      responses:
+        '200':
+          description: Misja zakończona
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueItem'
+        '404':
+          description: Nie znaleziono obiektu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /employees:
+    get:
+      tags: [Employees]
+      summary: Lista pracowników
+      operationId: listEmployees
+      responses:
+        '200':
+          description: Lista pracowników
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Employee'
+    post:
+      tags: [Employees]
+      summary: Dodaj pracownika
+      operationId: createEmployee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeCreate'
+      responses:
+        '201':
+          description: Utworzono
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /employees/{employee}:
+    patch:
+      tags: [Employees]
+      summary: Aktualizuj pracownika (dane lub is_active)
+      operationId: updateEmployee
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeUpdate'
+      responses:
+        '200':
+          description: Zaktualizowano
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Employees]
+      summary: Usuń pracownika
+      operationId: deleteEmployee
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      responses:
+        '204':
+          description: Usunięto
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /links/proxy:
+    post:
+      tags: [Links]
+      summary: Utwórz lub zwróć zapisany link uploadu dokumentów + QR
+      description: |
+        Proxy do zewnętrznego serwisu QR upload. Jeśli linki są już zapisane
+        na pozycji kolejki (po numerze awizacji), zwraca je bez wywołania zewnętrznego API.
+      operationId: createQrLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceDocumentNumber]
+              properties:
+                sourceDocumentNumber:
+                  type: string
+                  example: AW-100
+      responses:
+        '200':
+          description: Zwrócono istniejące lub świeżo utworzone linki
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QrLinkPayload'
+        '201':
+          description: Utworzono nowe linki
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QrLinkPayload'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          description: Błąd połączenia z serwisem QR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+  /debug/method:
+    post:
+      tags: [Debug]
+      summary: Echo metody, payloadu i nagłówków
+      operationId: debugMethod
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Echo żądania
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  method:
+                    type: string
+                  payload:
+                    type: object
+                  headers:
+                    type: object
+
+components:
+  parameters:
+    QueueItemId:
+      name: queueItem
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: ID pozycji kolejki
+    EmployeeId:
+      name: employee
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: ID pracownika
+
+  responses:
+    NotFound:
+      description: Nie znaleziono
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    ValidationError:
+      description: Błąd walidacji
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+
+  schemas:
+    ErrorMessage:
+      type: object
+      properties:
+        message:
+          type: string
+        detail:
+          type: string
+          nullable: true
+
+    QueueOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        queue_item_id:
+          type: integer
+          readOnly: true
+        strefa:
+          type: string
+        grupa_towarowa:
+          type: string
+        dostawca:
+          type: string
+        ilosc_nosnikow:
+          type: integer
+          minimum: 0
+        ilosc_referencji:
+          type: integer
+          minimum: 0
+
+    QueueItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        numer_awizacji:
+          type: string
+        rodzaj:
+          type: string
+          enum: [rozładunek, załadunek]
+        magazyn:
+          type: string
+        kierowca:
+          type: string
+        numer_pojazdu:
+          type: string
+        planowana_data:
+          type: string
+          format: date
+        planowana_godzina:
+          type: string
+          nullable: true
+          example: '10:00:00'
+        godzina_rozpoczecia:
+          type: string
+          nullable: true
+        ilosc_zamowien:
+          type: integer
+        position:
+          type: integer
+        status:
+          type: string
+          enum: [Oczekujący, Zakolejkowany, Realizowane, Zakończone]
+        pobrana_przez_identyfikator:
+          type: string
+          nullable: true
+        pobrana_przez_inicjaly:
+          type: string
+          nullable: true
+        pobrana_at:
+          type: string
+          format: date-time
+          nullable: true
+        doc_upload_url:
+          type: string
+          nullable: true
+        qr_code_url:
+          type: string
+          nullable: true
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueueOrder'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    QueueItemCreate:
+      type: object
+      required:
+        - numer_awizacji
+        - rodzaj
+        - magazyn
+        - kierowca
+        - numer_pojazdu
+        - planowana_data
+      properties:
+        numer_awizacji:
+          type: string
+        rodzaj:
+          type: string
+          enum: [rozładunek, załadunek]
+        magazyn:
+          type: string
+        kierowca:
+          type: string
+        numer_pojazdu:
+          type: string
+        planowana_data:
+          type: string
+          format: date
+        planowana_godzina:
+          type: string
+          nullable: true
+        godzina_rozpoczecia:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [Oczekujący, Zakolejkowany, Realizowane, Zakończone]
+        orders:
+          type: array
+          items:
+            type: object
+            required: [strefa, grupa_towarowa, dostawca, ilosc_nosnikow, ilosc_referencji]
+            properties:
+              strefa:
+                type: string
+              grupa_towarowa:
+                type: string
+              dostawca:
+                type: string
+              ilosc_nosnikow:
+                type: integer
+                minimum: 0
+              ilosc_referencji:
+                type: integer
+                minimum: 0
+
+    QueueItemUpdate:
+      type: object
+      properties:
+        numer_awizacji:
+          type: string
+        rodzaj:
+          type: string
+          enum: [rozładunek, załadunek]
+        magazyn:
+          type: string
+        kierowca:
+          type: string
+        numer_pojazdu:
+          type: string
+        planowana_data:
+          type: string
+          format: date
+        planowana_godzina:
+          type: string
+          nullable: true
+        godzina_rozpoczecia:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [Oczekujący, Zakolejkowany, Realizowane, Zakończone]
+        pobrana_przez_identyfikator:
+          type: string
+          nullable: true
+        pobrana_przez_inicjaly:
+          type: string
+          nullable: true
+        pobrana_at:
+          type: string
+          format: date-time
+          nullable: true
+        orders:
+          type: array
+          items:
+            type: object
+            properties:
+              strefa:
+                type: string
+              grupa_towarowa:
+                type: string
+              dostawca:
+                type: string
+              ilosc_nosnikow:
+                type: integer
+              ilosc_referencji:
+                type: integer
+
+    Employee:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        identifier:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    EmployeeCreate:
+      type: object
+      required: [identifier, first_name, last_name]
+      properties:
+        identifier:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+
+    EmployeeUpdate:
+      type: object
+      properties:
+        identifier:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        is_active:
+          type: boolean
+
+    QrLinkPayload:
+      type: object
+      properties:
+        uploadUrl:
+          type: string
+          nullable: true
+        qrCodeUrl:
+          type: string
+          nullable: true

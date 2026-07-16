@@ -22,8 +22,10 @@ RUN mkdir -p bootstrap/cache storage/framework/{cache,sessions,views} storage/lo
  && chmod -R 775 bootstrap/cache storage \
  && composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
 
-# Frontend dist -> public
+# Frontend dist -> public (preserve OpenAPI docs shipped with backend)
 COPY --from=frontend /app/frontend/dist/ ./public/
+# Re-copy OpenAPI in case frontend dist ever ships a colliding path
+COPY backend/public/OpenAPI ./public/OpenAPI
 
 ENV APP_ENV=production
 ENV APP_DEBUG=false
