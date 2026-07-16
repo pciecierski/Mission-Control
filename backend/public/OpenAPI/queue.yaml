@@ -1,0 +1,140 @@
+openapi: 3.0.3
+info:
+  title: Mission Control API — Queue
+  description: Endpointy misji / awizacji i kolejki.
+  version: 1.0.0
+servers:
+  - url: /api
+tags:
+  - name: Queue
+paths:
+  /queue:
+    get:
+      tags: [Queue]
+      summary: Lista wszystkich pozycji kolejki
+      operationId: listQueueItems
+      responses:
+        '200':
+          description: Lista pozycji
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Queue]
+      summary: Utwórz nową pozycję kolejki
+      operationId: createQueueItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - numer_awizacji
+                - rodzaj
+                - magazyn
+                - kierowca
+                - numer_pojazdu
+                - planowana_data
+              properties:
+                numer_awizacji: { type: string }
+                rodzaj: { type: string, enum: [rozładunek, załadunek] }
+                magazyn: { type: string }
+                kierowca: { type: string }
+                numer_pojazdu: { type: string }
+                planowana_data: { type: string, format: date }
+                planowana_godzina: { type: string, nullable: true }
+                godzina_rozpoczecia: { type: string, nullable: true }
+                status:
+                  type: string
+                  enum: [Oczekujący, Zakolejkowany, Realizowane, Zakończone]
+                orders:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '201':
+          description: Utworzono
+        '422':
+          description: Błąd walidacji
+  /queue/{queueItem}:
+    patch:
+      tags: [Queue]
+      summary: Częściowa aktualizacja pozycji
+      operationId: updateQueueItem
+      parameters:
+        - name: queueItem
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [Oczekujący, Zakolejkowany, Realizowane, Zakończone]
+                pobrana_przez_identyfikator: { type: string, nullable: true }
+                pobrana_przez_inicjaly: { type: string, nullable: true }
+                pobrana_at: { type: string, format: date-time, nullable: true }
+      responses:
+        '200':
+          description: Zaktualizowano
+        '404':
+          description: Nie znaleziono
+    delete:
+      tags: [Queue]
+      summary: Usuń pozycję kolejki
+      operationId: deleteQueueItem
+      parameters:
+        - name: queueItem
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Usunięto
+  /queue/reorder:
+    post:
+      tags: [Queue]
+      summary: Ustaw kolejność pozycji
+      operationId: reorderQueue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  items: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /closed:
+    post:
+      tags: [Queue]
+      summary: Oznacz misję jako Zakończone
+      operationId: closeQueueItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceDocumentNumber]
+              properties:
+                sourceDocumentNumber: { type: string }
+      responses:
+        '200':
+          description: Zakończono
+        '404':
+          description: Nie znaleziono

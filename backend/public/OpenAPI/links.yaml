@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: Mission Control API — Links / QR
+  description: Proxy do zewnętrznego serwisu QR upload dokumentów.
+  version: 1.0.0
+servers:
+  - url: /api
+tags:
+  - name: Links
+paths:
+  /links/proxy:
+    post:
+      tags: [Links]
+      summary: Utwórz lub zwróć zapisany link uploadu + QR
+      description: |
+        Jeśli linki są już zapisane na pozycji kolejki (po numerze awizacji),
+        zwraca je bez wywołania zewnętrznego API.
+      operationId: createQrLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceDocumentNumber]
+              properties:
+                sourceDocumentNumber:
+                  type: string
+                  example: AW-100
+      responses:
+        '200':
+          description: Istniejące lub świeżo utworzone linki
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl: { type: string, nullable: true }
+                  qrCodeUrl: { type: string, nullable: true }
+        '201':
+          description: Utworzono nowe linki
+        '422':
+          description: Błąd walidacji
+        '502':
+          description: Błąd połączenia z serwisem QR
